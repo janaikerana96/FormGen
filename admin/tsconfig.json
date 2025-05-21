@@ -3,6 +3,9 @@
   "include": ["./src", "./custom.d.ts"],
   "compilerOptions": {
     "rootDir": "../",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   }
 }

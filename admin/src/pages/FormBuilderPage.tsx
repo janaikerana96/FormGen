@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MultiStepWizardBuilder } from '../components/MultiStepWizardBuilder';
-import type { ApiAuth, ExternalDataSource, FormField, FormSchema } from '../types';
+import type { ApiAuth, ExternalDataSource, FormField, FormSchema, FormStep } from '../types';
 import {
   convertInternalToJsonSchema,
   convertJsonSchemaToInternal,
@@ -17,8 +17,7 @@ import {
   Download as DownloadIcon,
   Edit as EditIcon,
   ExpandMore as ExpandMoreIcon,
-  PlayArrow as PlayArrowIcon,
-  Upload as UploadIcon,
+  Upload as UploadIcon
 } from '@mui/icons-material';
 import {
   Accordion,
@@ -31,12 +30,7 @@ import {
   CardActions,
   CardContent,
   CardHeader,
-  Checkbox,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControlLabel,
   Grid,
   Menu,
@@ -53,11 +47,14 @@ import {
 
 // React JSON Schema Form
 import { ArrowDropDownIcon } from '@mui/x-date-pickers/icons';
-import type { Step } from '../components/MultiStepWizardBuilder';
 import { FormFieldEditor } from '../components/FormFieldEditor';
 import { FormPreviewDialog } from '../components/FormPreviewDialog';
 import { ImportSchemaDialog } from '../components/ImportSchemaDialog';
 import { MultiStepFormRenderer } from '../components/MultiStepFormRenderer';
+import type { Step } from '../components/MultiStepWizardBuilder';
+import { getToken } from '../utils/token';
+
+
 export const FormBuilderPage = () => {
   const [isMultiStep, setIsMultiStep] = useState(false);
   const [multiSteps, setMultiSteps] = useState<Step[]>([]);
@@ -100,7 +97,7 @@ export const FormBuilderPage = () => {
     setStepCurrentField({
       id: Date.now().toString(),
       type: 'string',
-      title: 'Novo Campo',
+      label: 'Novo Campo',
       name: `field_${Date.now()}`,
     });
     setStepFieldEditorOpen(true);
@@ -149,101 +146,52 @@ export const FormBuilderPage = () => {
 
   /*** Fim das funções para editar campos do step multi-etapa */
 
-
-  // Carregar formulários e autenticações ao montar o componente
+  // Função para carregar formulários e autenticações ao montar o componente
   useEffect(() => {
     const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
       try {
-        setIsLoading(true);
-        setError(null);
+        const response = await fetch('/api/forms', {
+          headers: { Authorization: getToken() },
+        });
+        if (!response.ok) throw new Error('Erro ao buscar formulários');
+        const data = await response.json();
 
-        // Aqui você faria chamadas para suas APIs Strapi
-        // const formsResponse = await fetch('/api/form-schemas');
-        // const formsData = await formsResponse.json();
-        // setForms(formsData.map(schema => convertJsonSchemaToInternal(schema)));
+        const parsedForms: FormSchema[] = data.data.map((entry: any) => {
+          const raw = entry.attributes ?? entry;
+          const schema = raw.json_schema ?? {};
+          return {
+            id: entry.id,
+            documentId: raw.documentId,
+            title: raw.title,
+            description: raw.description,
+            isMultiStep: raw.isMultiStep,
+            fields: Array.isArray(schema.fields)
+              ? schema.fields
+              : schema.properties
+              ? Object.entries(schema.properties).map(([key, value]: any) => ({
+                  name: key,
+                  type: value.type,
+                  label: value.title || key,
+                  placeholder: value.placeholder || '',
+                }))
+              : [],
+            steps: Array.isArray(schema.steps) ? schema.steps : [],
+          };
+        });
 
-        // const authsResponse = await fetch('/api/authentications');
-        // const authsData = await authsResponse.json();
-        // setApiAuths(authsData);
-
-        // Por enquanto, vamos simular com dados de exemplo
-        setTimeout(() => {
-          setForms([
-            {
-              id: '1',
-              title: 'Formulário de Cadastro',
-              description: 'Formulário para cadastro de usuários',
-              fields: [
-                {
-                  id: 'field1',
-                  name: 'name',
-                  title: 'Nome Completo',
-                  type: 'string',
-                  placeholder: 'Digite seu nome completo',
-                  required: true,
-                },
-                {
-                  id: 'field2',
-                  name: 'email',
-                  title: 'Email',
-                  type: 'string',
-                  format: 'email',
-                  placeholder: 'seu@email.com',
-                  required: true,
-                },
-                {
-                  id: 'field3',
-                  name: 'cae',
-                  title: 'Código CAE',
-                  type: 'string',
-                  placeholder: 'Selecione o código CAE',
-                  externalSource: {
-                    enabled: true,
-                    endpoint: 'https://api.exemplo.com/cae',
-                    authKey: 'cae-api',
-                    method: 'GET',
-                    responseMapping: {
-                      valueField: 'code',
-                      labelField: 'description',
-                    },
-                  },
-                },
-              ],
-            },
-          ]);
-
-          setApiAuths([
-            {
-              id: '1',
-              name: 'API NIF',
-              type: 'api_key',
-              key: 'nif-api-key-123',
-              endpoint: 'https://api.exemplo.com/nif',
-              description: 'API para consulta de dados de NIF',
-              status: 'active',
-            },
-            {
-              id: '2',
-              name: 'API CAE',
-              type: 'api_key',
-              key: 'cae-api-key-456',
-              endpoint: 'https://api.exemplo.com/cae',
-              description: 'API para consulta de códigos CAE',
-              status: 'active',
-            },
-          ]);
-
-          setIsLoading(false);
-        }, 1000);
+        setForms(parsedForms);
       } catch (err) {
-        setError('Erro ao carregar dados');
-        setIsLoading(false);
         console.error(err);
+        setError('Erro ao carregar dados');
+      } finally {
+        setIsLoading(false);
       }
     };
-
     loadData();
   }, []);
+
 
   // Função para importar schema de uma URL
   const importSchemaFromUrl = async () => {
@@ -281,8 +229,12 @@ export const FormBuilderPage = () => {
           fields: [],
         };
 
-        setForms([...forms, combinedSchema]);
-        setCurrentForm(combinedSchema);
+        const convertedSchema = {
+          ...combinedSchema,
+          id: Date.now() // Convert string id to number
+        };
+        setForms([...forms, convertedSchema]);
+        setCurrentForm(convertedSchema);
       } else {
         // Importar como formulários separados
         const newForms = schemaArray.map((schema) => convertJsonSchemaToInternal(schema));
@@ -429,61 +381,74 @@ export const FormBuilderPage = () => {
     const newForm: FormSchema = {
       id: Date.now().toString(),
       title: 'Novo Formulário',
-      description: 'Descrição do formulário',
+      description: '',
+      isMultiStep: false,
       fields: [],
+      steps: [], // ← adicione isso
     };
-    setForms([...forms, newForm]);
+
+
     setCurrentForm(newForm);
-    setActiveTab(1); // Muda para a aba de edição
+    setIsMultiStep(false);
+    setMultiSteps([]); // começa limpo
+    setActiveTab(1);
   };
+
 
   // Função para adicionar um novo campo ao formulário atual
   const addNewField = () => {
     if (!currentForm) return;
-
+    const timestamp = Date.now();
     const newField: FormField = {
-      id: Date.now().toString(),
+      id: `field_${timestamp}`,
+      name: `field_${timestamp}`,
       type: 'string',
-      title: 'Novo Campo',
-      name: `field_${Date.now()}`,
+      label: 'Novo Campo',
       placeholder: 'Digite aqui',
+      required: false,
+      validation: {},
     };
-
     const updatedForm = {
       ...currentForm,
       fields: [...currentForm.fields, newField],
     };
-
     setCurrentForm(updatedForm);
     updateFormInList(updatedForm);
     setCurrentField(newField);
     setIsEditingField(true);
   };
 
+
   // Função para atualizar o formulário na lista
-  const updateFormInList = (updatedForm: FormSchema) => {
-    const updatedForms = forms.map((form) => (form.id === updatedForm.id ? updatedForm : form));
-    setForms(updatedForms);
+  const updateFormInList = (form: FormSchema) => {
+    setForms((prevForms) => {
+      const index = prevForms.findIndex((f) => f.documentId === form.documentId);
+      if (index !== -1) {
+        const updated = [...prevForms];
+        updated[index] = form;
+        return updated;
+      } else {
+        return [...prevForms, form];
+      }
+    });
   };
 
   // Função para salvar as alterações do campo
   const saveField = (field: FormField) => {
     if (!currentForm) return;
-
-    const updatedFields = currentField
-      ? currentForm.fields.map((f) => (f.id === field.id ? field : f))
-      : [...currentForm.fields, field];
-
+    const updatedFields = currentForm.fields.map((f) =>
+      f.id === field.id ? field : f
+    );
     const updatedForm = {
       ...currentForm,
       fields: updatedFields,
     };
-
     setCurrentForm(updatedForm);
     updateFormInList(updatedForm);
+    setCurrentField(field);
     setIsEditingField(false);
-    setCurrentField(null);
   };
+
 
   // Função para remover um campo
   const removeField = (fieldId: string) => {
@@ -499,7 +464,7 @@ export const FormBuilderPage = () => {
     updateFormInList(updatedForm);
   };
 
-  // Função para salvar o formulário na API
+  // Função para salvar o formulário na Collection
   const saveFormToApi = async () => {
     if (!currentForm) return;
 
@@ -507,58 +472,70 @@ export const FormBuilderPage = () => {
       setIsLoading(true);
       setError(null);
 
-      let finalForm: FormSchema;
+      const toFormSteps = (steps: any[]): FormStep[] =>
+        steps.map((s: any, i: number) => ({
+          id: typeof s.id === 'string' ? s.id : `step-${i}-${Date.now()}`,
+          title: s.title ?? `Etapa ${i + 1}`,
+          schema: s.schema ?? { type: 'object', properties: {} },
+        }));
 
-      if (isMultiStep) {
-        // Se for multi-step, salva steps, limpa fields
-        finalForm = {
-          ...currentForm,
-          isMultiStep: true,
-          steps: multiSteps.map((step, i) => ({
-            ...step,
-            id: step.id ?? `step-${i + 1}`,
-          })),
+      const formToSave: FormSchema = {
+        ...currentForm,
+        isMultiStep,
+        steps: isMultiStep ? toFormSteps(multiSteps) : [],
+      };
 
-          fields: [],
-        };
-      } else {
-        // Se for single, salva fields, limpa steps
-        finalForm = {
-          ...currentForm,
-          isMultiStep: false,
-          fields: currentForm.fields || [],
-          steps: [],
-        };
+      let method = 'POST';
+      let url = '/api/forms';
+
+      const documentId = formToSave.documentId;
+      const isUpdate = typeof documentId === 'string' && documentId.length > 10;
+      if (isUpdate) {
+        method = 'PUT';
+        url = `/api/forms/${documentId}`;
       }
 
-      // Atualiza o estado antes de converter e salvar
-      setCurrentForm(finalForm);
-      updateFormInList(finalForm);
+      const payload = {
+        title: formToSave.title,
+        description: formToSave.description,
+        isMultiStep: formToSave.isMultiStep,
+        json_schema: formToSave.isMultiStep
+          ? { isMultiStep: true, steps: formToSave.steps }
+          : convertInternalToJsonSchema(formToSave),
+      };
 
-      const jsonSchema = convertInternalToJsonSchema(finalForm);
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: getToken(),
+        },
+        body: JSON.stringify({ data: payload }),
+      });
 
-      // Aqui você faria a chamada real para a API Strapi
-      // const response = await fetch('/api/form-schemas', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(jsonSchema)
-      // });
+      if (!response.ok) throw new Error(`Erro ao salvar: ${response.statusText}`);
 
-      // if (!response.ok) {
-      //   throw new Error(`Erro ao salvar: ${response.statusText}`);
-      // }
+      const result = await response.json();
+      const savedId = result?.data?.id;
+      const savedDocumentId = result?.data?.documentId ?? result?.data?.attributes?.documentId;
 
-      // Simulando uma resposta bem-sucedida
-      setTimeout(() => {
-        setIsLoading(false);
-        // Mostrar mensagem de sucesso ou redirecionar
-      }, 1000);
+      if (savedId && savedDocumentId) {
+        const updatedForm = {
+          ...formToSave,
+          id: savedId,
+          documentId: savedDocumentId,
+        };
+        setCurrentForm(updatedForm);
+        updateFormInList(updatedForm);
+      }
+
+      setIsLoading(false);
+      alert('Formulário salvo com sucesso!');
     } catch (err) {
       setError(`Erro ao salvar formulário: ${err instanceof Error ? err.message : String(err)}`);
       setIsLoading(false);
     }
   };
-
 
   // Função para exportar o schema do formulário
   const exportFormSchema = () => {
@@ -693,9 +670,9 @@ export const FormBuilderPage = () => {
     return (
       <>
         <Tooltip title="Baixe um exemplo de formulário">
-        <Button variant="outlined" endIcon={<ArrowDropDownIcon />} onClick={handleClick}>
-          Exemplos
-        </Button>
+          <Button variant="outlined" endIcon={<ArrowDropDownIcon />} onClick={handleClick}>
+            Exemplos
+          </Button>
         </Tooltip>
         <Menu anchorEl={anchorEl} open={open} onClose={handleClose}>
           {exemplos.map((ex) => (
@@ -751,18 +728,18 @@ export const FormBuilderPage = () => {
           <Box sx={{ p: 4 }}>
             <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
               <Tooltip title="Crie um novo formulário">
-              <Button startIcon={<AddIcon />} variant="contained" onClick={createNewForm}>
-                Criar Novo Formulário
-              </Button>
+                <Button startIcon={<AddIcon />} variant="contained" onClick={createNewForm}>
+                  Criar Novo Formulário
+                </Button>
               </Tooltip>
               <Tooltip title="Importe um schema de formulário">
-              <Button
-                startIcon={<UploadIcon />}
-                variant="outlined"
-                onClick={() => setIsImportModalOpen(true)}
-              >
-                Importar Schema
-              </Button>
+                <Button
+                  startIcon={<UploadIcon />}
+                  variant="outlined"
+                  onClick={() => setIsImportModalOpen(true)}
+                >
+                  Importar Schema
+                </Button>
               </Tooltip>
               <BaixarExemploButton />
             </Stack>
@@ -785,16 +762,17 @@ export const FormBuilderPage = () => {
                       </Typography>
                     </CardContent>
                     <CardActions>
-                      <Button
-                        variant="contained"
-                        fullWidth
-                        onClick={() => {
-                          setCurrentForm(form);
-                          setActiveTab(1);
-                        }}
-                      >
-                        Editar
-                      </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setCurrentForm(form);
+                        setIsMultiStep(!!form.isMultiStep);
+                        setMultiSteps(form.steps || []);
+                        setActiveTab(1);
+                      }}
+                    >
+                      Editar
+                    </Button>
                     </CardActions>
                   </Card>
                 </Grid>
@@ -840,134 +818,200 @@ export const FormBuilderPage = () => {
 
             <FormControlLabel
               control={
-                <Switch checked={isMultiStep} onChange={(e) => setIsMultiStep(e.target.checked)} />
+                <Switch
+                  checked={isMultiStep}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setIsMultiStep(checked);
+                    const updatedForm = {
+                      ...currentForm,
+                      isMultiStep: checked,
+                      // zera fields ou steps quando alterna
+                      fields: checked ? [] : currentForm.fields ?? [],
+                      steps: checked ? [] : currentForm.steps ?? [],
+                    };
+                    setCurrentForm(updatedForm);
+                    updateFormInList(updatedForm);
+                    setMultiSteps([]); // limpa steps se virar true
+                  }}
+                />
+
               }
               label="Formulário multi-etapas"
             />
 
             {isMultiStep ? (
               <>
-              <MultiStepWizardBuilder
-                steps={multiSteps}
-                onChange={setMultiSteps}
-                onEditStepFields={handleEditStepFields}
-              />
+                 <Tooltip title="Salve o formulário para o banco de dados">
+                    <Button
+                      variant="contained"
+                      color="success"
+                      onClick={saveFormToApi}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                      {isLoading ? 'Salvando...' : 'Salvar Formulário'}
+                    </Button>
+                  </Tooltip>
+                <MultiStepWizardBuilder
+                  steps={multiSteps}
+                  onChange={setMultiSteps}
+                  onEditStepFields={handleEditStepFields}
+                />
 
                 {isMultiStep && multiSteps.length === 0 && (
-                <Typography color="text.secondary" sx={{ mt: 2, mb: 2 }}>
-                  Nenhuma etapa criada. Clique em "Nova Etapa" para começar!
-                </Typography>
+                  <Typography color="text.secondary" sx={{ mt: 2, mb: 2 }}>
+                    Nenhuma etapa criada. Clique em "Nova Etapa" para começar!
+                  </Typography>
                 )}
 
-              {editingStepIndex !== null && (
-                <Box sx={{ mt: 2, mb: 2, border: "1px solid #ddd", borderRadius: 2, p: 2, background: "#f6f8fa" }}>
-                  <Typography variant="h6" gutterBottom>
-                    Campos da Etapa: {multiSteps[editingStepIndex].title}
-                  </Typography>
-                  <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-                    <Button variant="contained" onClick={handleAddFieldToStep}>
-                      Adicionar Campo
-                    </Button>
-                    <Button variant="outlined" onClick={() => setEditingStepIndex(null)}>
-                      Fechar
-                    </Button>
-                  </Stack>
-                  {(Object.entries(multiSteps[editingStepIndex].schema?.properties || {})).length === 0 ? (
-                    <Typography variant="body2">Nenhum campo definido.</Typography>
-                  ) : (
-                    Object.entries(multiSteps[editingStepIndex].schema?.properties || {}).map(([fieldName, fieldSchema]: [string, any]) => (
-                      <Box key={fieldSchema.id} sx={{ mb: 1, p: 1, border: "1px solid #eee", borderRadius: 1, background: "#fff" }}>
-                        <Typography variant="subtitle2">
-                          {fieldSchema.title} <small>({fieldSchema.type})</small>
-                        </Typography>
-                        <Stack direction="row" spacing={1}>
-                          <Button size="small" variant="outlined" onClick={() => handleEditFieldInStep({ ...fieldSchema, name: fieldName })}>
-                            Editar
-                          </Button>
-                          <Button size="small" variant="outlined" color="error"
-                            onClick={() => {
-                              // Remove o campo
-                              const step = multiSteps[editingStepIndex];
-                              const newFields = Object.entries(step.schema?.properties || {}).filter(([k]) => k !== fieldName);
-                              const updatedStep = {
-                                ...step,
-                                schema: {
-                                  ...step.schema,
-                                  properties: Object.fromEntries(newFields),
-                                }
-                              };
-                              const updatedSteps = [...multiSteps];
-                              updatedSteps[editingStepIndex] = updatedStep;
-                              setMultiSteps(updatedSteps);
+                {editingStepIndex !== null && (
+                  <Box
+                    sx={{
+                      mt: 2,
+                      mb: 2,
+                      border: '1px solid #ddd',
+                      borderRadius: 2,
+                      p: 2,
+                      background: '#f6f8fa',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom>
+                      Campos da Etapa: {multiSteps[editingStepIndex].title}
+                    </Typography>
+                    <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                      <Button variant="contained" onClick={handleAddFieldToStep}>
+                        Adicionar Campo
+                      </Button>
+                      <Button variant="outlined" onClick={() => setEditingStepIndex(null)}>
+                        Fechar
+                      </Button>
+                    </Stack>
+                    {Object.entries(multiSteps[editingStepIndex].schema?.properties || {})
+                      .length === 0 ? (
+                      <Typography variant="body2">Nenhum campo definido.</Typography>
+                    ) : (
+                      Object.entries(multiSteps[editingStepIndex].schema?.properties || {}).map(
+                        ([fieldName, fieldSchema]: [string, any]) => (
+                          <Box
+                            key={fieldSchema.id}
+                            sx={{
+                              mb: 1,
+                              p: 1,
+                              border: '1px solid #eee',
+                              borderRadius: 1,
+                              background: '#fff',
                             }}
                           >
-                            Remover
-                          </Button>
-                        </Stack>
-                      </Box>
-                    ))
-                  )}
-                  {/* FieldEditor modal abaixo */}
-                  <FormFieldEditor
-                    open={stepFieldEditorOpen}
-                    field={stepCurrentField}
-                    apiAuths={apiAuths}
-                    isLoading={isLoading}
-                    isTestingExternalSource={isTestingExternalSource}
-                    externalSourceTestResults={externalSourceTestResults}
-                    onChange={setStepCurrentField}
-                    onClose={() => setStepFieldEditorOpen(false)}
-                    onSave={() => stepCurrentField && handleSaveFieldToStep(stepCurrentField)}
-                    onTestExternalSource={testExternalSource}
-                  />
-                </Box>
-              )}
-
-              {isMultiStep && multiSteps.length > 0 && (
-                <Accordion sx={{ mt: 4 }}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="subtitle1">Previsualização do Formulário Multi-Etapas</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <MultiStepFormRenderer
-                      schema={{
-                        isMultiStep: true,
-                        steps: multiSteps,
-                      }}
-                      onSubmit={data => {
-                      }}
+                            <Typography variant="subtitle2">
+                              {fieldSchema.title} <small>({fieldSchema.type})</small>
+                            </Typography>
+                            <Stack direction="row" spacing={1}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() =>
+                                  handleEditFieldInStep({ ...fieldSchema, name: fieldName })
+                                }
+                              >
+                                Editar
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="error"
+                                onClick={() => {
+                                  // Remove o campo
+                                  const step = multiSteps[editingStepIndex];
+                                  const newFields = Object.entries(
+                                    step.schema?.properties || {}
+                                  ).filter(([k]) => k !== fieldName);
+                                  const updatedStep = {
+                                    ...step,
+                                    schema: {
+                                      ...step.schema,
+                                      properties: Object.fromEntries(newFields),
+                                    },
+                                  };
+                                  const updatedSteps = [...multiSteps];
+                                  updatedSteps[editingStepIndex] = updatedStep;
+                                  setMultiSteps(updatedSteps);
+                                }}
+                              >
+                                Remover
+                              </Button>
+                            </Stack>
+                          </Box>
+                        )
+                      )
+                    )}
+                    {/* FieldEditor modal abaixo */}
+                    <FormFieldEditor
+                      open={stepFieldEditorOpen}
+                      field={stepCurrentField}
+                      apiAuths={apiAuths}
+                      isLoading={isLoading}
+                      isTestingExternalSource={isTestingExternalSource}
+                      externalSourceTestResults={externalSourceTestResults}
+                      onChange={setStepCurrentField}
+                      onClose={() => setStepFieldEditorOpen(false)}
+                      onSave={() => stepCurrentField && handleSaveFieldToStep(stepCurrentField)}
+                      onTestExternalSource={testExternalSource}
                     />
-                  </AccordionDetails>
-                </Accordion>
-              )}
-             </>
+                  </Box>
+                )}
+
+                {isMultiStep && multiSteps.length > 0 && (
+                  <Accordion sx={{ mt: 4 }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Typography variant="subtitle1">
+                        Previsualização do Formulário Multi-Etapas
+                      </Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <MultiStepFormRenderer
+                        schema={{
+                          isMultiStep: true,
+                          steps: multiSteps,
+                        }}
+                        onSubmit={(data) => {}}
+                      />
+                    </AccordionDetails>
+                  </Accordion>
+                )}
+              </>
             ) : (
               <>
                 <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
-                <Tooltip title="Adicione um novo campo nesta etapa">
-                  <Button startIcon={<AddIcon />} variant="contained" onClick={addNewField}>
-                    Adicionar Campo
-                  </Button>
+                  <Tooltip title="Adicione um novo campo nesta etapa">
+                    <Button startIcon={<AddIcon />} variant="contained" onClick={addNewField}>
+                      Adicionar Campo
+                    </Button>
                   </Tooltip>
                   <Tooltip title="Salve o formulário para o banco de dados">
-                  <Button variant="contained" color="success" onClick={saveFormToApi} disabled={isLoading}>
-                    {isLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-                    {isLoading ? "Salvando..." : "Salvar Formulário"}
-                  </Button>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      onClick={saveFormToApi}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
+                      {isLoading ? 'Salvando...' : 'Salvar Formulário'}
+                    </Button>
                   </Tooltip>
                   <Tooltip title="Exporte o schema do formulário">
-                  <Button
-                    variant="outlined"
-                    startIcon={<DownloadIcon />}
-                    onClick={exportFormSchema}
-                  >
-                    Exportar Schema
-                  </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={exportFormSchema}
+                    >
+                      Exportar Schema
+                    </Button>
                   </Tooltip>
                   <Tooltip title="Visualize o formulário">
-                  <Button variant="outlined" onClick={openFormPreview}>
-                    Visualizar Formulário
-                  </Button>
+                    <Button variant="outlined" onClick={openFormPreview}>
+                      Visualizar Formulário
+                    </Button>
                   </Tooltip>
                 </Stack>
                 <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
@@ -975,117 +1019,116 @@ export const FormBuilderPage = () => {
                 </Typography>
               </>
             )}
-            {!currentForm.isMultiStep &&
-              (
-                <>
-                  {(!currentForm.fields  || currentForm.fields.length === 0) ? (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {/* Nenhum campo criado ainda. Clique em "Adicionar Campo" para começar! */}
-                    </Typography>
-                  ) : (
-              currentForm.fields.map((field, index) => (
-                <Accordion key={field.id} expanded={currentField?.id === field.id}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography>
-                      {index + 1}. {field.title} ({field.type}
-                      {field.format ? ` - ${field.format}` : ''})
-                    </Typography>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="body2">Nome do Campo: {field.name}</Typography>
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="body2">Tipo: {field.type}</Typography>
-                      </Grid>
-                      {field.format && (
-                        <Grid item xs={12} md={6}>
-                          <Typography variant="body2">Formato: {field.format}</Typography>
-                        </Grid>
-                      )}
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="body2">
-                          Obrigatório: {field.required ? 'Sim' : 'Não'}
+            {!currentForm.isMultiStep && (
+              <>
+                {!currentForm.fields || currentForm.fields.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {/* Nenhum campo criado ainda. Clique em "Adicionar Campo" para começar! */}
+                  </Typography>
+                ) : (
+                  currentForm.fields.map((field, index) => (
+                    <Accordion key={field.id} expanded={currentField?.id === field.id}>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Typography>
+                          {index + 1}. {field.label} ({field.type}
+                          {field.format ? ` - ${field.format}` : ''})
                         </Typography>
-                      </Grid>
-                      {field.placeholder && (
-                        <Grid item xs={12} md={6}>
-                          <Typography variant="body2">Placeholder: {field.placeholder}</Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2">Nome do Campo: {field.name}</Typography>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2">Tipo: {field.type}</Typography>
+                          </Grid>
+                          {field.format && (
+                            <Grid item xs={12} md={6}>
+                              <Typography variant="body2">Formato: {field.format}</Typography>
+                            </Grid>
+                          )}
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2">
+                              Obrigatório: {field.required ? 'Sim' : 'Não'}
+                            </Typography>
+                          </Grid>
+                          {field.placeholder && (
+                            <Grid item xs={12} md={6}>
+                              <Typography variant="body2">
+                                Placeholder: {field.placeholder}
+                              </Typography>
+                            </Grid>
+                          )}
+                          {field.externalSource?.enabled && (
+                            <Grid item xs={12}>
+                              <Typography variant="body2">
+                                Fonte Externa: {field.externalSource.endpoint}
+                              </Typography>
+                              <Typography variant="body2">
+                                Autenticação: {field.externalSource.authKey || 'Nenhuma'}
+                              </Typography>
+                            </Grid>
+                          )}
+                          {field.validation && (
+                            <Grid item xs={12}>
+                              <Typography variant="body2">Validações:</Typography>
+                              <ul>
+                                {field.validation.pattern && (
+                                  <li>Padrão: {field.validation.pattern}</li>
+                                )}
+                                {field.validation.min !== undefined && (
+                                  <li>Valor mínimo: {field.validation.min}</li>
+                                )}
+                                {field.validation.max !== undefined && (
+                                  <li>Valor máximo: {field.validation.max}</li>
+                                )}
+                                {field.validation.minLength !== undefined && (
+                                  <li>Comprimento mínimo: {field.validation.minLength}</li>
+                                )}
+                                {field.validation.maxLength !== undefined && (
+                                  <li>Comprimento máximo: {field.validation.maxLength}</li>
+                                )}
+                                {field.validation.externalSource?.enabled &&
+                                  field.validation.externalSource.endpoint && (
+                                    <li>
+                                      Validação externa: {field.validation.externalSource.endpoint}
+                                    </li>
+                                  )}
+                              </ul>
+                            </Grid>
+                          )}
                         </Grid>
-                      )}
-                      {field.externalSource?.enabled && (
-                        <Grid item xs={12}>
-                          <Typography variant="body2">
-                            Fonte Externa: {field.externalSource.endpoint}
-                          </Typography>
-                          <Typography variant="body2">
-                            Autenticação: {field.externalSource.authKey || 'Nenhuma'}
-                          </Typography>
-                        </Grid>
-                      )}
-                      {field.validation && (
-                        <Grid item xs={12}>
-                          <Typography variant="body2">Validações:</Typography>
-                          <ul>
-                            {field.validation.pattern && (
-                              <li>Padrão: {field.validation.pattern}</li>
-                            )}
-                            {field.validation.min !== undefined && (
-                              <li>Valor mínimo: {field.validation.min}</li>
-                            )}
-                            {field.validation.max !== undefined && (
-                              <li>Valor máximo: {field.validation.max}</li>
-                            )}
-                            {field.validation.minLength !== undefined && (
-                              <li>Comprimento mínimo: {field.validation.minLength}</li>
-                            )}
-                            {field.validation.maxLength !== undefined && (
-                              <li>Comprimento máximo: {field.validation.maxLength}</li>
-                            )}
-                            {field.validation.externalSource?.enabled &&
-                              field.validation.externalSource.endpoint && (
-                                <li>
-                                  Validação externa: {field.validation.externalSource.endpoint}
-                                </li>
-                              )}
-                          </ul>
-                        </Grid>
-                      )}
-                    </Grid>
-                    <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-                      <Tooltip title="Edite o campo">
-                      <Button
-                        variant="outlined"
-                        startIcon={<EditIcon />}
-                        onClick={() => {
-                          setCurrentField(field);
-                          setIsEditingField(true);
-                        }}
-                      >
-                        Editar
-                      </Button>
-                      </Tooltip>
-                      <Tooltip title="Remova o campo">
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        startIcon={<DeleteIcon />}
-                        onClick={() =>
-                        {
-                          if (window.confirm("Tem certeza que deseja remover este campo?")) {
-                            removeField(field.id)
-                          }
-                        }
-                        }
-                      >
-                        Remover
-                      </Button>
-                      </Tooltip>
-                    </Stack>
-                  </AccordionDetails>
-                </Accordion>
-                 ))
+                        <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+                          <Tooltip title="Edite o campo">
+                            <Button
+                              variant="outlined"
+                              startIcon={<EditIcon />}
+                              onClick={() => {
+                                setCurrentField(field);
+                                setIsEditingField(true);
+                              }}
+                            >
+                              Editar
+                            </Button>
+                          </Tooltip>
+                          <Tooltip title="Remova o campo">
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              startIcon={<DeleteIcon />}
+                              onClick={() => {
+                                if (window.confirm('Tem certeza que deseja remover este campo?')) {
+                                  removeField(field.id);
+                                }
+                              }}
+                            >
+                              Remover
+                            </Button>
+                          </Tooltip>
+                        </Stack>
+                      </AccordionDetails>
+                    </Accordion>
+                  ))
                 )}
               </>
             )}

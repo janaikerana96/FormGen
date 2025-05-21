@@ -1,64 +1,75 @@
-// Tipos para o nosso form builder
-export interface ExternalDataSource {
-  enabled: boolean
-  endpoint: string
-  authKey?: string
-  method?: "GET" | "POST"
+export type JsonSchema = {
+  $id?: string;
+  type: 'object';
+  title?: string;
+  description?: string;
+  required?: string[];
+  properties: {
+    [key: string]: any;
+  };
+  [key: string]: any;
+};
+
+export type ExternalDataSource = {
+  enabled: boolean;
+  endpoint: string;
+  method: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  authKey?: string;
+  requestParams?: Record<string, string>; // ✅ aqui
   responseMapping?: {
-    valueField: string
-    labelField: string
-  }
-  requestParams?: Record<string, string>
-  headers?: Record<string, string>
-}
+    valueField: string;
+    labelField: string;
+  };
+};
 
-export interface FormField {
-  id: string
-  type: "string" | "number" | "boolean" | "array" | "object"
-  format?: "date" | "date-time" | "email" | "uri" | "regex"
-  title: string
-  name: string
-  description?: string
-  placeholder?: string
-  default?: any
-  required?: boolean
-  options?: { label: string; value: string }[]
-  externalSource?: ExternalDataSource
+
+export type FormField = {
+  id: string;
+  name: string;
+  type: string;
+  label: string;
+  description?: string;     // ✅ adicionado
+  default?: string | number | boolean; // ✅ opcionalmente, se usar valor inicial
+  placeholder?: string;
+  format?: string;
+  required?: boolean;
+  options?: { value: string; label: string }[];
   validation?: {
-    externalSource?: ExternalDataSource
-    pattern?: string
-    min?: number
-    max?: number
-    minLength?: number
-    maxLength?: number
-  }
-}
+    pattern?: string;
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    externalSource?: ExternalDataSource;
+  };
+  externalSource?: ExternalDataSource;
+};
 
-// Adicione os tipos para suportar formulários multi-etapas
-export interface FormStep {
-  id: string
-  title: string
-  schema: any // O schema JSON original para esta etapa
-}
+export type FormStep = {
+  id: string;
+  title: string;
+  schema: JsonSchema;
+};
 
-// Atualize a interface FormSchema para incluir suporte a steps
-export interface FormSchema {
-  id: string
-  title: string
-  description?: string
-  fields: FormField[]
-  isMultiStep?: boolean
-  steps?: FormStep[]
-}
+export type FormSchema = {
+  id: string | number;
+  strapiId?: number;
+  documentId?: string;
+  title: string;
+  description?: string;
+  isMultiStep: boolean;
+  fields: FormField[];
+  steps?: FormStep[];
+};
 
-// Interface para autenticações
-export interface ApiAuth {
-  id: string
-  name: string
-  type: "api_key" | "oauth" | "basic"
-  key: string
-  secret?: string
-  endpoint: string
-  description: string
-  status: "active" | "inactive"
-}
+export type ApiAuth = {
+  id: string;
+  name: string;
+  type: 'api_key' | 'basic' | 'oauth';
+  key: string;
+  secret?: string;
+  endpoint: string;
+  description: string;
+  status: 'active' | 'inactive';
+};

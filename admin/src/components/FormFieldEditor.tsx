@@ -81,8 +81,8 @@ export const FormFieldEditor: React.FC<FormFieldEditorProps> = ({
               <TextField
                 label="Título do Campo"
                 fullWidth
-                value={field.title}
-                onChange={(e) => onChange({ ...field, title: e.target.value })}
+                value={field.label}
+                onChange={(e) => onChange({ ...field, label: e.target.value })}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -480,6 +480,7 @@ export const FormFieldEditor: React.FC<FormFieldEditorProps> = ({
                                   const externalSource = validation.externalSource || {
                                     enabled: true,
                                     endpoint: '',
+                                    method: 'GET', // <-- aqui
                                   };
 
                                   onChange({
@@ -540,6 +541,7 @@ export const FormFieldEditor: React.FC<FormFieldEditorProps> = ({
                                     const externalSource = validation.externalSource || {
                                       enabled: true,
                                       endpoint: '',
+                                      method: 'GET', // <-- aqui
                                     };
 
                                     onChange({

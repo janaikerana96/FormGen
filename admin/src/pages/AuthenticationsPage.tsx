@@ -214,7 +214,7 @@ export const AuthenticationsPage = () => {
 
       // Simulando uma resposta bem-sucedida
       setTimeout(() => {
-        alert(`Conexão com ${auth.name} (${auth.endpoint}) testada com sucesso!`)
+        setError(`Conexão com ${auth.name} (${auth.endpoint}) testada com sucesso!`)
         setIsLoading(false)
       }, 1000)
     } catch (err) {
